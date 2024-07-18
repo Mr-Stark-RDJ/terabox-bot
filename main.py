@@ -3,7 +3,6 @@ import os
 import time
 from uuid import uuid4
 
-import redis
 import telethon
 import telethon.tl.types
 from telethon import TelegramClient, events
@@ -25,12 +24,17 @@ from tools import (
 
 bot = TelegramClient("tele", API_ID, API_HASH)
 
-db = redis.Redis(
-    host=HOST,
-    port=PORT,
-    password=PASSWORD,
-    decode_responses=True,
-)
+# Define the data storage functions
+def save_data(key, value):
+    with open(f"{key}.json", "w") as file:
+        json.dump(value, file)
+
+def get_data(key):
+    try:
+        with open(f"{key}.json", "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return None
 
 
 @bot.on(
@@ -44,16 +48,14 @@ db = redis.Redis(
 async def start(m: UpdateNewMessage):
     reply_text = f"""
 Hello! I am a bot to download videos from terabox.
-Send me the terabox link and I will start downloading it.
-Join @RoldexVerse For Updates
-[Source Code](https://github.com/r0ld3x/terabox-downloader-bot) """
-    check_if = await is_user_on_chat(bot, "@RoldexVerse", m.peer_id)
+Send me the terabox link and I will start downloading it."""
+    check_if = await is_user_on_chat(bot, "@Iron_Man_4ever", m.peer_id)
     if not check_if:
-        return await m.reply("Please join @RoldexVerse then send me the link again.")
-    check_if = await is_user_on_chat(bot, "@RoldexVerseChats", m.peer_id)
+        return await m.reply("Please join @Iron_Man_4ever then send me the link again.")
+    check_if = await is_user_on_chat(bot, "@Iron_Man_4ever", m.peer_id)
     if not check_if:
         return await m.reply(
-            "Please join @RoldexVerseChats then send me the link again."
+            "Please join @Iron_Man_4ever then send me the link again."
         )
     await m.reply(reply_text, link_preview=False, parse_mode="markdown")
 
@@ -68,14 +70,14 @@ Join @RoldexVerse For Updates
 )
 async def start(m: UpdateNewMessage):
     text = m.pattern_match.group(1)
-    fileid = db.get(str(text))
-    check_if = await is_user_on_chat(bot, "@RoldexVerse", m.peer_id)
+    fileid = get_data(str(text))
+    check_if = await is_user_on_chat(bot, "@Iron_Man_4ever", m.peer_id)
     if not check_if:
-        return await m.reply("Please join @RoldexVerse then send me the link again.")
-    check_if = await is_user_on_chat(bot, "@RoldexVerseChats", m.peer_id)
+        return await m.reply("Please join @Iron_Man_4ever then send me the link again.")
+    check_if = await is_user_on_chat(bot, "@Iron_Man_4ever", m.peer_id)
     if not check_if:
         return await m.reply(
-            "Please join @RoldexVerseChats then send me the link again."
+            "Please join @Iron_Man_4ever then send me the link again."
         )
     await bot(
         ForwardMessagesRequest(
@@ -101,8 +103,8 @@ async def start(m: UpdateNewMessage):
 )
 async def remove(m: UpdateNewMessage):
     user_id = m.pattern_match.group(1)
-    if db.get(f"check_{user_id}"):
-        db.delete(f"check_{user_id}")
+    if get_data(f"check_{user_id}"):
+        os.remove(f"check_{user_id}.json")
         await m.reply(f"Removed {user_id} from the list.")
     else:
         await m.reply(f"{user_id} is not in the list.")
@@ -126,19 +128,19 @@ async def handle_message(m: Message):
     url = get_urls_from_string(m.text)
     if not url:
         return await m.reply("Please enter a valid url.")
-    check_if = await is_user_on_chat(bot, "@RoldexVerse", m.peer_id)
+    check_if = await is_user_on_chat(bot, "@Iron_Man_4ever", m.peer_id)
     if not check_if:
-        return await m.reply("Please join @RoldexVerse then send me the link again.")
-    check_if = await is_user_on_chat(bot, "@RoldexVerseChats", m.peer_id)
+        return await m.reply("Please join @Iron_Man_4ever then send me the link again.")
+    check_if = await is_user_on_chat(bot, "@Iron_Man_4ever", m.peer_id)
     if not check_if:
         return await m.reply(
-            "Please join @RoldexVerseChats then send me the link again."
+            "Please join @Iron_Man_4ever then send me the link again."
         )
-    is_spam = db.get(m.sender_id)
+    is_spam = get_data(m.sender_id)
     if is_spam and m.sender_id not in [1317173146]:
         return await m.reply("You are spamming. Please wait a 1 minute and try again.")
     hm = await m.reply("Sending you the media wait...")
-    count = db.get(f"check_{m.sender_id}")
+    count = get_data(f"check_{m.sender_id}")
     if count and int(count) > 5:
         return await hm.edit(
             "You are limited now. Please come back after 2 hours or use another account."
@@ -146,7 +148,7 @@ async def handle_message(m: Message):
     shorturl = extract_code_from_url(url)
     if not shorturl:
         return await hm.edit("Seems like your link is invalid.")
-    fileid = db.get(shorturl)
+    fileid = get_data(shorturl)
     if fileid:
         try:
             await hm.delete()
@@ -165,11 +167,10 @@ async def handle_message(m: Message):
                 with_my_score=True,
             )
         )
-        db.set(m.sender_id, time.monotonic(), ex=60)
-        db.set(
+        save_data(m.sender_id, time.monotonic())
+        save_data(
             f"check_{m.sender_id}",
             int(count) + 1 if count else 1,
-            ex=7200,
         )
 
         return
@@ -177,7 +178,7 @@ async def handle_message(m: Message):
     data = get_data(url)
     if not data:
         return await hm.edit("Sorry! API is dead or maybe your link is broken.")
-    db.set(m.sender_id, time.monotonic(), ex=60)
+    save_data(m.sender_id, time.monotonic())
     if (
         not data["file_name"].endswith(".mp4")
         and not data["file_name"].endswith(".mkv")
@@ -237,9 +238,9 @@ async def handle_message(m: Message):
             caption=f"""
 File Name: `{data['file_name']}`
 Size: **{data["size"]}** 
-Direct Link: [Click Here](https://t.me/teraboxdown_bot?start={uuid})
+Direct Link: [Click Here](https://t.me/Wifuhunt_bot?start={uuid})
 
-@RoldexVerse
+@Iron_Man_4ever
 """,
             supports_streaming=True,
             spoiler=True,
@@ -261,9 +262,9 @@ Direct Link: [Click Here](https://t.me/teraboxdown_bot?start={uuid})
             caption=f"""
 File Name: `{data['file_name']}`
 Size: **{data["size"]}** 
-Direct Link: [Click Here](https://t.me/teraboxdown_bot?start={uuid})
+Direct Link: [Click Here](https://t.me/Wifuhunt_bot?start={uuid})
 
-@RoldexVerse
+@Iron_Man_4ever
 """,
             progress_callback=progress_bar,
             thumb=thumbnail if thumbnail else None,
